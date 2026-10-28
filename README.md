@@ -1,168 +1,222 @@
 # Mataroa × GitHub Bridge
 
-用 GitHub 幫你的 [Mataroa](https://mataroa.blog/) 部落格建立文章備份，也可以先在 GitHub 寫 Markdown，再手動把新文章發布到 Mataroa。
+**Back up your [Mataroa](https://mataroa.blog/) blog to GitHub, write drafts in Markdown, and publish new posts to Mataroa with GitHub Actions.**
 
-本專案使用 Python 標準庫，不需要安裝第三方套件，也不需要租用伺服器。日常工作由 GitHub Actions 執行。
+[繁體中文](README.zh-TW.md)
+
+This project uses Python's standard library and GitHub Actions. No third-party Python packages or personal server are required.
 
 > [!IMPORTANT]
-> **公開原始碼倉庫不應存放你的私人文章，也不要在公開倉庫設定真實的 `MATAROA_API_KEY` 或執行備份工作流。** 備份工作流會把文章內容提交到正在執行它的 GitHub 倉庫；如果倉庫是公開的，文章也可能公開。請把公開倉庫只當作原始碼展示頁，實際使用時另建一個 **Private（私有）** 倉庫。
+> **Use a private repository for your actual blog backup and publishing workflows.**
+>
+> The backup workflow commits your blog posts to the repository where it runs. If that repository is public, your private articles could become public. Never put real blog content or your `MATAROA_API_KEY` in a public repository. Keep the public repository for sharing source code only.
 
-## 這個工具能做什麼？
+## Features
 
-- **每日備份：** 從 Mataroa 讀取文章，存成 `posts/` 裡的 Markdown 檔案。
-- **手機寫作：** 在 GitHub 網頁或手機 App 編輯 `drafts/` 裡的 Markdown 草稿。
-- **手動發布：** 你在 GitHub Actions 手動啟動發布工作流、指定草稿後，才會嘗試把新文章發布到 Mataroa。
-- **保留版本：** 備份有變更時，GitHub Actions 會提交更新；Git 的提交歷史可用來查看舊版本。
-- **避免意外重複發布：** 程式會在草稿中保存穩定識別碼，並在發布前檢查 Mataroa，處理部分網路錯誤或工作流中斷的情況。
+- **Automatic backups:** Fetch posts from Mataroa and save them as Markdown files in `posts/`.
+- **Write anywhere:** Create and edit Markdown drafts in `drafts/`, including through the GitHub mobile app.
+- **Manual publishing:** Publish a draft to Mataroa by manually running a GitHub Actions workflow.
+- **Version history:** Git records changes to backed-up posts and project files.
+- **Duplicate-publishing safeguards:** The tool assigns a stable identifier to a draft and checks Mataroa before publishing, helping recover from certain interrupted or uncertain publishing attempts.
 
-### 重要限制
+## What This Project Does Not Do
 
-- 目前只支援**新增文章**。如需修改已有文章，請直接在 Mataroa 編輯；之後的備份會更新 `posts/` 中的副本。
-- 備份範圍是 Mataroa 的文章（posts），不包括自訂頁面、留言，也不會獨立下載圖片檔。文章中的圖片 URL 會保留，但這不代表圖片本身已獲備份。
-- 程式不會因為某篇文章不再出現在 Mataroa API 回應中，就自動刪除 `posts/` 裡的檔案。
-- 本工具不能取代你在 Mataroa 或其他位置另外保存的備份。
+- It currently supports **publishing new posts only**. To edit an existing post, edit it directly on Mataroa. A subsequent backup will update its copy in `posts/`.
+- It backs up posts returned by the Mataroa API, not custom pages or comments.
+- Image URLs in your posts are preserved, but the image files themselves are not downloaded and backed up.
+- A post missing from a later API response is not automatically deleted from `posts/`.
+- This tool is not a replacement for keeping an independent backup.
 
-## 開始前先了解資料夾
+## Repository Structure
 
-| 路徑 | 用途 |
+| Path | Purpose |
 |---|---|
-| `posts/` | 從 Mataroa API 備份下來的文章，以線上版本為準。 |
-| `drafts/` | 等待發布的新文章。 |
-| `published/` | 經此工具發布後，保存的草稿副本。它與 `posts/` 用途不同，因此可能有同一篇文章的兩份檔案。 |
-| `scripts/mataroa_sync.py` | 備份、草稿驗證與發布的主要程式。 |
-| `.github/workflows/backup.yml` | 每日自動備份工作流，也可以手動啟動。 |
-| `.github/workflows/publish.yml` | 手動發布指定草稿的工作流。 |
-| `tests/` | 不需要連接 Mataroa 的單元測試。 |
+| `posts/` | Markdown copies of posts fetched from Mataroa. |
+| `drafts/` | New posts waiting to be published. |
+| `published/` | Copies of drafts successfully published through this tool. |
+| `scripts/mataroa_sync.py` | Main program for backup, draft validation, and publishing. |
+| `.github/workflows/backup.yml` | Scheduled and manually triggered backup workflow. |
+| `.github/workflows/publish.yml` | Manually triggered publishing workflow. |
+| `tests/` | Unit tests that do not require a Mataroa account. |
 
-## 實際使用：請在私有倉庫部署
+A post may appear in both `posts/` and `published/`. This is intentional: `posts/` reflects the version fetched from Mataroa, while `published/` preserves the draft used for publishing. These local copies do not create duplicate online posts.
 
-公開倉庫適合分享程式碼；你的文章備份則應放在另一個私有倉庫。下面的部署步驟請在**新建的 Private 倉庫**進行，不要直接在公開的原始碼倉庫操作。
+---
 
-### 第 1 步：建立私有倉庫
+## Setup Guide
 
-1. 在 GitHub 建立一個新倉庫，例如 `mataroa-github-bridge-private`。
-2. 可見性選 **Private**。
-3. 建議先建立空倉庫，不要勾選自動新增 README、License 或 `.gitignore`。
-4. 解壓專案 ZIP，把專案資料夾**裡面的所有檔案和資料夾**上傳到新倉庫的根目錄，再提交到預設分支（通常叫 `main`）。不要把整個專案資料夾再多套一層。
-5. 確認 `.github/workflows/backup.yml` 與 `.github/workflows/publish.yml` 都已經提交到預設分支。
+### 1. Create a Private GitHub Repository
 
-### 第 2 步：加入 Mataroa API Key
+Create a new repository on [GitHub](https://github.com/) and set its visibility to **Private**. For example:
 
-1. 登入 Mataroa，打開官方 API 文件：<https://mataroa.blog/api/docs/>，依文件取得你帳號的 API Key。
-2. 在**私有 GitHub 倉庫**打開 **Settings → Secrets and variables → Actions**。
-3. 按 **New repository secret**。
-4. 名稱填 `MATAROA_API_KEY`，Secret 值填入 API Key，然後儲存。
+`mataroa-github-bridge-private`
 
-**不要**把 API Key 寫在 README、Markdown、Python 或 YAML 檔案中，也不要貼到 Issue、聊天或提交記錄。如果密鑰曾經公開，請在 Mataroa 撤銷或更換，再更新 GitHub Secret。
+Then:
 
-### 第 3 步：手動執行首次備份
+1. Download and extract this project.
+2. Upload the **contents of the project folder** to the root of your new repository. Do not add another nested project folder.
+3. Commit the files to your default branch, usually `main`.
+4. Confirm that both workflow files are present:
+   - `.github/workflows/backup.yml`
+   - `.github/workflows/publish.yml`
 
-建議先從 Mataroa 匯出頁另外保存一份 Markdown ZIP：<https://mataroa.blog/export/>。這是額外備份，不是本工具運作的必要步驟。
+The workflows must be committed to the repository's default branch for scheduled backups to run as expected.
 
-1. 在私有倉庫打開 **Actions**。
-2. 選 **Mataroa - Daily Backup**。
-3. 點 **Run workflow**，選預設分支，再啟動工作流。
-4. 完成後查看執行記錄，確認備份文章數量；並在 `posts/` 抽查標題、正文與中文內容。
+### 2. Add Your Mataroa API Key
 
-之後工作流會依照每日 **UTC 20:17** 排程執行，即中國標準時間約**次日 04:17**。GitHub 定時工作流不保證在設定分鐘的當下準時啟動；也可以隨時在 Actions 頁面手動備份。
+1. Sign in to Mataroa and open the [official API documentation](https://mataroa.blog/api/docs/) to obtain your API key.
+2. In your **private GitHub repository**, go to **Settings → Secrets and variables → Actions**.
+3. Select **New repository secret**.
+4. Set the name to exactly `MATAROA_API_KEY`.
+5. Paste your API key into the secret value and save it.
 
-## 如何寫作及發布文章
+Never hard-code your API key in Python, YAML, Markdown, or other files. Do not commit it to Git or share it in issues or logs.
 
-### 第 1 步：在 `drafts/` 建立草稿
+If your key has ever been exposed, revoke or replace it in Mataroa and update the GitHub secret.
 
-在私有倉庫的 `drafts/` 資料夾中，選 **Add file → Create new file**。檔名建議包含日期，例如 `2026-10-28-my-note.md`。
+### 3. Run Your First Backup
 
-把以下內容貼入檔案，再修改標題、日期和正文：
+Before starting, consider making an independent backup using the [Mataroa Markdown export page](https://mataroa.blog/export/). This is an additional precaution, not a requirement for the tool to work.
+
+To run the backup:
+
+1. Open your private repository on GitHub.
+2. Select **Actions**.
+3. Choose **Mataroa - Daily Backup**.
+4. Click **Run workflow** and select the default branch.
+5. Start the workflow and wait for the run to finish.
+6. Inspect `posts/` and check several articles to confirm that their titles, body text, and non-English characters are preserved.
+
+The backup is scheduled for **20:17 UTC every day**, which is approximately **04:17 the following day in China Standard Time (UTC+8)**. GitHub Actions does not guarantee that scheduled workflows start at the exact scheduled minute. You can also run a backup manually at any time.
+
+If no backup files have changed, the workflow does not create an unnecessary commit.
+
+---
+
+## Write and Publish a New Post
+
+### 1. Create a Draft
+
+In your private repository, open the `drafts/` directory and select **Add file → Create new file**.
+
+Use a descriptive filename, such as:
+
+`drafts/2026-10-28-my-note.md`
+
+Start with this template:
 
 ```markdown
 ---
-title: 文章標題
+title: My New Post
 published_at: 2026-10-28
 ---
 
-正文從這裡開始。
+Write your article here.
 
-可以正常使用 Markdown 標題、連結和清單。
+You can use normal Markdown syntax, including headings, links, and lists.
 ```
 
-格式規則：
+**Draft formatting rules:**
 
-- 檔案必須以 `---` 開始，並以另一行 `---` 結束前置資料區塊。
-- `title` 必填，而且不能是空白。
-- `published_at` 可填 `YYYY-MM-DD` 格式的日期；不填或留空時，程式會使用中國標準時間的當日日期。
-- `---` 之後是正文，不能留成全空白。
-- 一個草稿只代表一篇新文章。**不要自行加入 `slug` 或 `url` 欄位**；本版本不透過 GitHub 修改已有文章。
-- 編輯後按 **Commit changes**，把草稿提交到預設分支。只儲存草稿不會發布文章。
+- The file must begin with a `---` line, followed by the metadata and another `---` line.
+- `title` is required and must not be empty.
+- `published_at` is optional. If provided, use the `YYYY-MM-DD` date format. If omitted or left empty, the tool uses the current date in China Standard Time.
+- The body after the metadata must not be empty.
+- Do not add your own `slug` or `url` fields. This version is for publishing new posts, not editing existing ones.
+- Commit the draft to the branch you intend to publish from. Saving an uncommitted draft does not publish it.
 
-### 第 2 步：手動啟動發布
+You can write and commit drafts using the GitHub website or mobile app.
 
-1. 打開私有倉庫的 **Actions**。
-2. 選 **Mataroa - Publish Draft**。
-3. 點 **Run workflow**。
-4. 在 `draft_path` 輸入相對於倉庫根目錄的檔案路徑，例如 `drafts/2026-10-28-my-note.md`。
-5. 確認選取的是包含該草稿的分支，再點一次 **Run workflow**。
-6. 查看執行記錄。成功時會顯示文章標題、Mataroa URL 以及 GitHub 保存位置。
+### 2. Publish the Draft Manually
 
-成功發布後，程式會把草稿移到 `published/`。之後每日備份會從 Mataroa 取得線上文章並存到 `posts/`。兩個資料夾可能包含同一篇文章，但用途不同：`published/` 留存由草稿發布的副本，`posts/` 則反映 Mataroa API 回傳的版本。
+1. Open your private repository and select **Actions**.
+2. Choose **Mataroa - Publish Draft**.
+3. Click **Run workflow**.
+4. In `draft_path`, enter the path relative to the repository root. For example:
+
+   `drafts/2026-10-28-my-note.md`
+
+5. Make sure the selected branch contains the committed draft.
+6. Start the workflow and inspect its run log.
+
+After a successful publication, the workflow moves the draft to `published/`. The daily backup later retrieves the online post from Mataroa and saves it to `posts/`.
 
 > [!CAUTION]
-> 如果發布工作流中途失敗，先檢查 Mataroa 部落格是否已出現該文章，再決定是否重新執行。不要直接複製同一篇草稿並當作新文章發布。程式使用隱藏的 HTML 註解標記來協助識別已建立的文章；請勿手動刪除正文末尾的 `mataroa-bridge-id` 註解。
+> If a publishing workflow fails or is interrupted, check your Mataroa blog before trying again. The post may already have been created even if the workflow did not finish. Do not publish a duplicate draft blindly.
+>
+> The tool uses a stable identifier stored in the draft and an HTML comment marker to help recognize an article that has already been created. Do not manually remove the `mataroa-bridge-id` comment at the end of a published post's body.
 
-## 公開倉庫的安全設定
+---
 
-當你把本專案放到公開 GitHub 倉庫時：
+## Keep the Public Repository Safe
 
-1. 不要上傳真實的 `posts/`、`drafts/` 或 `published/` 內容；這個原始碼包中的這些資料夾是空的，只保留 `.gitkeep`。
-2. 不要在公開倉庫設定 `MATAROA_API_KEY`，也不要用你的真實帳號執行工作流。
-3. 打開 **Actions**，分別進入 **Mataroa - Daily Backup** 和 **Mataroa - Publish Draft** 工作流，使用工作流選單停用它們。這可避免公開原始碼展示倉庫因定時排程而持續執行失敗的工作。
-4. 真正使用時，請用本專案檔案建立另一個私有倉庫，並只在私有倉庫設定 API Key。
+If you want to open-source this project, maintain two separate repositories:
 
-如果文章或密鑰曾經被提交到公開倉庫，僅刪除檔案並不能清除 Git 歷史中所有副本；應依照 GitHub 的敏感資料移除指引處理，並立即輪換密鑰。
+- **Public repository:** Source code, documentation, tests, and license.
+- **Private repository:** Your real blog backups, drafts, publishing history, and API key.
 
-## 常見問題
+For the public repository:
 
-**找不到 `Run workflow`？**
+1. Do not commit real content to `posts/`, `drafts/`, or `published/`. The directories in this source package are empty placeholders.
+2. Do not add your real `MATAROA_API_KEY`.
+3. Do not run the backup or publishing workflows against your real Mataroa account.
+4. In the public repository's **Actions** page, disable both **Mataroa - Daily Backup** and **Mataroa - Publish Draft**.
+5. Use a separate private repository for actual operation.
 
-確認對應的 `.yml` 工作流已經提交到預設分支，並且目前檢視的是正確工作流。
+Deleting a secret or article from the latest version of a repository does not necessarily remove it from Git history. If sensitive content has been committed publicly, follow GitHub's [guidance for removing sensitive data from a repository](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository). Rotate any exposed API key immediately.
 
-**顯示缺少 `MATAROA_API_KEY`？**
+---
 
-確認你是在私有的實際使用倉庫中加入 Secret，名稱必須完全是 `MATAROA_API_KEY`。不要把密鑰貼到日誌或程式碼中。
+## Troubleshooting
 
-**收到 HTTP 401 或 403？**
+### “Run workflow” is not available
 
-檢查 API Key 是否正確，以及是否加入到正在執行工作流的同一個倉庫。必要時在 Mataroa 更新密鑰，再更新 GitHub Secret。
+Check that the workflow file is committed to the repository's default branch and that you have opened the correct workflow.
 
-**顯示 `Draft not found`？**
+### The workflow reports a missing `MATAROA_API_KEY`
 
-先確認草稿已提交到你選取的分支。`draft_path` 必須是從倉庫根目錄起算的路徑，例如 `drafts/my-note.md`，且檔案必須在 `drafts/` 內。
+Make sure the secret is configured in the same repository where the workflow is running. Its name must be exactly `MATAROA_API_KEY`.
 
-**發布後不確定有沒有成功？**
+### The request returns HTTP 401 or 403
 
-先檢查 Mataroa 上是否已有文章，再看 Actions 日誌。若請求結果不確定，程式會嘗試用穩定標記找回已建立的文章，避免盲目重複建立；仍應先檢查線上部落格。
+Check that the API key is valid and that the secret is configured correctly. If necessary, replace the key in Mataroa and update the GitHub secret.
 
-**為什麼同一篇文章同時在 `posts/` 和 `published/`？**
+### The workflow reports “Draft not found”
 
-這是刻意設計：`posts/` 是 Mataroa 現有內容的備份，`published/` 是透過草稿發布後留下的副本。它們不是兩篇線上文章，也不會因為有兩份本地檔案就建立兩篇 Mataroa 文章。
+Confirm that the draft has been committed to the selected branch and that `draft_path` is correct. For example:
 
-## 執行單元測試
+`drafts/my-note.md`
 
-本專案的測試不需要真實 Mataroa 帳號或 API Key。需要 Python 3.11 或更新版本：
+The draft must be inside the `drafts/` directory.
+
+### You are unsure whether publishing succeeded
+
+Check your live Mataroa blog first, then inspect the workflow log. When the result of a publishing request is uncertain, the tool attempts to identify an already-created post using its stable marker. Always verify the online result before retrying.
+
+### Why are there copies of the same article in two folders?
+
+This is expected. `posts/` contains the version fetched from Mataroa; `published/` contains the draft copy saved after publishing. The two local files serve different purposes and do not mean that two online posts were created.
+
+---
+
+## Run the Tests
+
+The unit tests do not need a Mataroa account or API key. Use Python 3.11 or newer:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-本專案沒有第三方 Python 套件相依性。
+The project has no third-party Python package dependencies.
 
-## 官方參考
+## References
 
-- [Mataroa API 文件](https://mataroa.blog/api/docs/)
-- [Mataroa Markdown 匯出](https://mataroa.blog/export/)
-- [GitHub：手動執行工作流](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
-- [GitHub：設定倉庫可見性](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility)
-- [GitHub：從倉庫移除敏感資料](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)
+- [Mataroa API documentation](https://mataroa.blog/api/docs/)
+- [Mataroa Markdown export](https://mataroa.blog/export/)
+- [GitHub: Manually running a workflow](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
+- [GitHub: Setting repository visibility](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility)
+- [GitHub: Removing sensitive data from a repository](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)
 
-## 授權條款
+## License
 
-本專案以 MIT License 授權，詳見 [`LICENSE`](LICENSE)。
+This project is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
