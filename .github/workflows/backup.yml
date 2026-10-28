@@ -1,0 +1,44 @@
+name: Mataroa - Daily Backup
+
+on:
+  schedule:
+    # 04:17 China Standard Time (UTC+8). GitHub schedules use UTC.
+    - cron: '17 20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mataroa-github-bridge
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Back up all Mataroa posts
+        env:
+          MATAROA_API_KEY: ${{ secrets.MATAROA_API_KEY }}
+        run: python scripts/mataroa_sync.py backup
+
+      - name: Commit backup changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- posts
+          if ! git diff --cached --quiet; then
+            git commit -m "Back up Mataroa posts"
+            git push
+          else
+            echo "No archive changes to commit."
+          fi

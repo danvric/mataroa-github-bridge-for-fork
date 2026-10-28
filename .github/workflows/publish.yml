@@ -1,0 +1,61 @@
+name: Mataroa - Publish Draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft_path:
+        description: 'Markdown file under drafts/, e.g. drafts/2026-10-28-my-note.md'
+        required: true
+        type: string
+        default: 'drafts/your-post.md'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mataroa-github-bridge
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Validate draft and save stable publishing ID
+        env:
+          DRAFT_PATH: ${{ inputs.draft_path }}
+        run: |
+          python scripts/mataroa_sync.py prepare-publish --draft "$DRAFT_PATH"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$DRAFT_PATH"
+          if ! git diff --cached --quiet; then
+            git commit -m "Prepare Mataroa draft for publishing"
+            git push
+          fi
+
+      - name: Publish draft to Mataroa
+        env:
+          MATAROA_API_KEY: ${{ secrets.MATAROA_API_KEY }}
+          DRAFT_PATH: ${{ inputs.draft_path }}
+        run: python scripts/mataroa_sync.py publish --draft "$DRAFT_PATH"
+
+      - name: Record successful publication in GitHub
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- drafts published
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish Mataroa draft"
+            git push
+          else
+            echo "No repository changes to commit."
+          fi

@@ -1,0 +1,4 @@
+# Never store API credentials in the repository.
+.env
+.env.*
+*.secret
