@@ -21,17 +21,32 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Check API key
+        id: check_key
+        env:
+          MATAROA_API_KEY: ${{ secrets.MATAROA_API_KEY }}
+        run: |
+          if [ -z "$MATAROA_API_KEY" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::MATAROA_API_KEY is not configured. Skipping backup."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Python
+        if: steps.check_key.outputs.available == 'true'
         uses: actions/setup-python@v7
         with:
           python-version: '3.13'
 
       - name: Back up all Mataroa posts
+        if: steps.check_key.outputs.available == 'true'
         env:
           MATAROA_API_KEY: ${{ secrets.MATAROA_API_KEY }}
         run: python scripts/mataroa_sync.py backup
 
       - name: Commit backup changes
+        if: steps.check_key.outputs.available == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
